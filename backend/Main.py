@@ -12,21 +12,23 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, ConfigDict 
 from langgraph.graph import StateGraph, END
 import warnings, time, random, json
+from dotenv import load_dotenv 
+load_dotenv()
 
 # ------------------------ CONFIG ------------------------
 warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAxrRPotRM9AJbVqFmbpkQCcNUpTRBqXHQ")
-GENAI_RAG_URL = os.getenv("GENAI_RAG_URL", "http://localhost:8001/searchrag")
-GENAI_RAG_TOKEN = os.getenv("GENAI_RAG_TOKEN", "")          
-MCP_SEARCH_URL   = os.getenv("MCP_SEARCH_URL", "http://localhost:8003/mcp/Websearch")
-END_USER_ID      = os.getenv("END_USER_ID", "test-user")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GENAI_RAG_URL = os.getenv("GENAI_RAG_URL")
+GENAI_RAG_TOKEN = os.getenv("GENAI_RAG_TOKEN")          
+MCP_SEARCH_URL   = os.getenv("MCP_SEARCH_URL")
+END_USER_ID      = os.getenv("END_USER_ID")
 
-MIN_OVERALL = float(os.getenv("MIN_OVERALL", "0.85"))
-MAX_LOOPS   = int(os.getenv("MAX_LOOPS", "5"))
-SUBQ_SEARCH_COUNT = int(os.getenv("SUBQ_SEARCH_COUNT", "3"))
-MAX_SOURCES_FOR_CITATIONS = int(os.getenv("MAX_SOURCES_FOR_CITATIONS", "8"))
-MAX_EVIDENCE_SNIPPETS     = int(os.getenv("MAX_EVIDENCE_SNIPPETS", "6"))
+MIN_OVERALL = float(os.getenv("MIN_OVERALL"))
+MAX_LOOPS   = int(os.getenv("MAX_LOOPS"))
+SUBQ_SEARCH_COUNT = int(os.getenv("SUBQ_SEARCH_COUNT"))
+MAX_SOURCES_FOR_CITATIONS = int(os.getenv("MAX_SOURCES_FOR_CITATIONS"))
+MAX_EVIDENCE_SNIPPETS     = int(os.getenv("MAX_EVIDENCE_SNIPPETS"))
 
 DEFAULT_ALLOWED = {
     "nih.gov", "ncbi.nlm.nih.gov", "cdc.gov", "who.int",
@@ -146,7 +148,9 @@ async def get_concise_summary(text: str) -> str:
     for attempt in range(3):
         try:
             prompt = f"Provide a very concise summary (max 50 words) of the following text:\n\n{(text or '')[:2000]}"
+            logger.info(f"get_concise_summary prompt: {prompt}")
             resp = await gemini_model.generate_content_async(prompt)
+            logger.info(f"get_concise_summary response: {resp}")
             return (resp.text or "").strip()
         except Exception as e:
             if "429" in str(e) and attempt < 2:
@@ -154,6 +158,7 @@ async def get_concise_summary(text: str) -> str:
                 _sleep_backoff()
             else:
                 logger.error(f"Gemini concise summarization error: {e}")
+                logger.error(f"get_concise_summary input text: {text}")
                 return "Summary not available due to API error."
 
 def expand_and_summarize_web(link: Dict[str, Any], query: str, queue: Queue):
@@ -252,7 +257,7 @@ def planner(state: QueryState) -> QueryState:
     rag_ctx = _rag_context(state)
 
     prompt = f"""
-Generate 3–5 subquestions to answer the main query:
+Generate 3-5 subquestions to answer the main query:
 "{state.question}"
 
 Use (if present):
@@ -272,7 +277,8 @@ Output: Numbered list of distinct, feasible, medically valid subquestions.
             state.previous_subqueries = state.subqueries
             state.subqueries = [
                 line.strip("0123456789. ").strip()
-                for line in (resp.text or "").splitlines() if line.strip()
+                for line in (resp.text or "").splitlines()
+                if line.strip() and not line.lower().startswith("here are")
             ]
             return state
         except Exception as e:
@@ -281,9 +287,10 @@ Output: Numbered list of distinct, feasible, medically valid subquestions.
                 _sleep_backoff()
             else:
                 logger.error(f"Gemini API error: {e}")
-                state.subqueries = []; return state
+                state.subqueries = []
+                return state
 
-def executor(state: QueryState) -> QueryState:
+async def executor(state: QueryState) -> QueryState:
     logger.info(" Executor starting")
     aggregated: List[Dict[str, Any]] = []
 
@@ -295,7 +302,7 @@ def executor(state: QueryState) -> QueryState:
         rag_res.raise_for_status()
         rag_data = rag_res.json()
         state.rag_answer  = rag_data.get("output_text", "No answer from RAG.")
-        state.rag_summary = asyncio.run(get_concise_summary(state.rag_answer))
+        state.rag_summary = await get_concise_summary(state.rag_answer)
     except Exception as e:
         logger.error(f"RAG Error: {e}")
         state.rag_answer = f"RAG Error: {e}"
@@ -424,6 +431,8 @@ Evidence: {json.dumps(ev, ensure_ascii=False)}
                 fixed = (gemini_json.generate_content(f"Return valid JSON only (no prose):\n{raw}").text or "").strip()
                 data = json.loads(fixed)
 
+            logger.info(f"Rubric JSON: {data}")  # <-- Added logging for rubric
+
             rubric = EvalRubric(
                 coverage=float(data.get("coverage", 0.0)),
                 grounding=float(data.get("grounding", 0.0)),
@@ -434,7 +443,7 @@ Evidence: {json.dumps(ev, ensure_ascii=False)}
             )
             state.scores = rubric
 
-            if rubric.overall >= MIN_OVERALL and not rubric.replan_needed:
+            if rubric.overall >= MIN_OVERALL:
                 state.evaluation, state.feedback, state.bad_subqueries = "yes", "", []
             else:
                 state.evaluation = "no"
@@ -455,9 +464,11 @@ Evidence: {json.dumps(ev, ensure_ascii=False)}
                 return state
 
 def should_replan(state: QueryState) -> str:
-    if state.loop_count >= MAX_LOOPS: return "end"
-    if state.scores and (state.scores.overall < MIN_OVERALL or state.scores.replan_needed): return "replan"
-    if state.evaluation == "no": return "replan"
+    if state.loop_count >= MAX_LOOPS:
+        return "end"
+    # Only replan if overall score is less than MIN_OVERALL
+    if state.scores and state.scores.overall < MIN_OVERALL:
+        return "replan"
     return "end"
 
 # ------------------------ GRAPH ------------------------
