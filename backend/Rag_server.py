@@ -12,7 +12,39 @@ logger = logging.getLogger(__name__)
 GENAI_BASE_URL = os.getenv("GENAI_BASE_URL", "https://ea.api.101gen.ai")
 COPILOT_ID = os.getenv("COPILOT_ID", "6d2e59a6-5752-4139-bf5a-eb1be239520a")
 END_USER_ID = os.getenv("END_USER_ID", "test-user")
-JWT_TOKEN = os.getenv("JWT_TOKEN","eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJTOU8wZElrUkFBR3VxUWZPM3YyRlpRY1NpdmU1TmVBbnl1SkpGUUQ1MnRnIn0.eyJleHAiOjE3NTU1Nzg0NDksImlhdCI6MTc1NTU3ODE0OSwianRpIjoiNzEyM2I1NjktMjhjYy00ODIyLWFkMDQtZTZlOTQyNTUyNmYyIiwiaXNzIjoiaHR0cHM6Ly9iZXRhLmF1dGguMTAxZ2VuLmFpL3JlYWxtcy9lYS4xMDFnZW4uYWkiLCJhdWQiOiJhY2NvdW50Iiwic3ViIjoiZTA3ZDY5MWEtMDU3Ni00YjRjLWJjYjktYTgwZjFmNjczN2NmIiwidHlwIjoiQmVhcmVyIiwiYXpwIjoiYzYzOTVlNTYtMDNkYi00MGNhLWI3MWEtZDI5NzkzZjgxZDAwXzZhZjg4Y2EyLWMzYWUtNGQzMC1iNjcyLTg5NDkxMWRkOTNlMCIsImFjciI6IjEiLCJhbGxvd2VkLW9yaWdpbnMiOlsiLyoiXSwicmVhbG1fYWNjZXNzIjp7InJvbGVzIjpbIm9mZmxpbmVfYWNjZXNzIiwiZGVmYXVsdC1yb2xlcy1lYS4xMDFnZW4uYWkiLCJ1bWFfYXV0aG9yaXphdGlvbiJdfSwicmVzb3VyY2VfYWNjZXNzIjp7ImFjY291bnQiOnsicm9sZXMiOlsibWFuYWdlLWFjY291bnQiLCJtYW5hZ2UtYWNjb3VudC1saW5rcyIsInZpZXctcHJvZmlsZSJdfX0sInNjb3BlIjoiZW1haWwgcHJvZmlsZSIsImNsaWVudEhvc3QiOiIxMDcuMjEuMzUuMTE2IiwiZW1haWxfdmVyaWZpZWQiOmZhbHNlLCJjbGllbnRfdHlwZSI6ImFwaSIsInByZWZlcnJlZF91c2VybmFtZSI6InNlcnZpY2UtYWNjb3VudC1jNjM5NWU1Ni0wM2RiLTQwY2EtYjcxYS1kMjk3OTNmODFkMDBfNmFmODhjYTItYzNhZS00ZDMwLWI2NzItODk0OTExZGQ5M2UwIiwiY2xpZW50QWRkcmVzcyI6IjEwNy4yMS4zNS4xMTYiLCJjbGllbnRfaWQiOiJjNjM5NWU1Ni0wM2RiLTQwY2EtYjcxYS1kMjk3OTNmODFkMDBfNmFmODhjYTItYzNhZS00ZDMwLWI2NzItODk0OTExZGQ5M2UwIn0.efPJfOowJUvzS-Zp16oB-0lIEFdL1BWw7dCsa0G9cnMjaNcnp4C0flF6SneWQi0npTrx_PxmZiscQFvhXguKnLEo4ZgI62RJklXDW_Js5pIKQDiU2JInybKBcezei8H29-5-1roGq1ksLzkGsh522U_8wv0b9OTdHqHNqpfAAOWWFGkhB2xLZBvm4duqQpNUc9WENw_3s3DNP2jXuxziWTPqK2ToCbStj34pjdsLQyWB4_O_C5Eg6fYby-eKbSMPBH8aa7SirXmL_nykUmCHnXO0rju0YL4s8jSddpzts7mbPUmWNciShriOpE69PHu71QRMlloSqD41W64HpE0P5w")
+
+# Credentials for JWT token fetch
+CLIENT_ID = os.getenv("GENAI_CLIENT_ID", "c6395e56-03db-40ca-b71a-d29793f81d00_6af88ca2-c3ae-4d30-b672-894911dd93e0")
+CLIENT_SECRET = os.getenv("GENAI_CLIENT_SECRET", "CGPMf8WfOzPLrnxJoITWGbvif1Bo2LlQ")
+
+def fetch_jwt_token():
+    """
+    Fetch JWT token from GenAI API using client_id and client_secret.
+    """
+    token_url = f"{GENAI_BASE_URL}/client/token"
+    payload = {
+        "client_id": CLIENT_ID,
+        "client_secret": CLIENT_SECRET
+    }
+    headers = {
+        "accept": "application/json",
+        "Content-Type": "application/json"
+    }
+    try:
+        resp = requests.post(token_url, json=payload, headers=headers)
+        resp.raise_for_status()
+        token_data = resp.json()
+        token = token_data.get("access_token")
+        if not token:
+            logger.error(f"Token response did not contain 'access_token': {token_data}")
+            return None
+        return token
+    except Exception as e:
+        logger.error(f"Failed to fetch JWT token: {e}")
+        return None
+
+# Fetch and set JWT_TOKEN at startup
+JWT_TOKEN = fetch_jwt_token()
 
 # Add this line to create the FastAPI app
 app = FastAPI(title="GenAI RAG Server")
