@@ -3,19 +3,21 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import requests, os, logging
 from datetime import datetime
+from dotenv import load_dotenv 
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # RAG setup (Ensure these environment variables are set or provided)
-GENAI_BASE_URL = os.getenv("GENAI_BASE_URL", "https://ea.api.101gen.ai")
-COPILOT_ID = os.getenv("COPILOT_ID", "6d2e59a6-5752-4139-bf5a-eb1be239520a")
-END_USER_ID = os.getenv("END_USER_ID", "test-user")
+GENAI_BASE_URL = os.getenv("GENAI_BASE_URL")
+COPILOT_ID = os.getenv("COPILOT_ID")
+END_USER_ID = os.getenv("END_USER_ID")
 
 # Credentials for JWT token fetch
-CLIENT_ID = os.getenv("GENAI_CLIENT_ID", "c6395e56-03db-40ca-b71a-d29793f81d00_6af88ca2-c3ae-4d30-b672-894911dd93e0")
-CLIENT_SECRET = os.getenv("GENAI_CLIENT_SECRET", "CGPMf8WfOzPLrnxJoITWGbvif1Bo2LlQ")
+CLIENT_ID = os.getenv("GENAI_CLIENT_ID")
+CLIENT_SECRET = os.getenv("GENAI_CLIENT_SECRET")
 
 def fetch_jwt_token():
     """
