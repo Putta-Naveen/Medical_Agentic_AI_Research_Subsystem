@@ -21,13 +21,16 @@ import httpx
 from googleapiclient.discovery import build
 import google.generativeai as genai
 
+from dotenv import load_dotenv
+load_dotenv()
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 # Environment variables and constants
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "AIzaSyAxrRPotRM9AJbVqFmbpkQCcNUpTRBqXHQ")
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "AIzaSyAsvfh78DeGl-enTwy_R9VOSN13pWTHdyE")
-DEFAULT_CSE_ID = os.getenv("GOOGLE_CSE_ID", "30144daad209b469c")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+DEFAULT_CSE_ID = os.getenv("GOOGLE_CSE_ID")
 DEFAULT_PORT = int(os.getenv("MY_PORT", 8003))
 DEFAULT_SEARCH_COUNT = int(os.getenv("MY_DEFAULT_SEARCH_COUNT", 10))
 # FastAPI app
